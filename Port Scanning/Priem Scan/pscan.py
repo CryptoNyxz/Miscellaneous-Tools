@@ -14,7 +14,7 @@ from datetime import timedelta
 
 
 __author__ = "Jaymund Cyrus Floranza (CryptoNyxz)"
-__version__ = (0, 1, 0)
+__version__ = (0, 1, 1)
 __license__ = """
 MIT License
 
@@ -38,6 +38,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
+
+
+# Utility Functions
+
+
+def keyboard_interrupt() -> None:
+    """
+    KeyboardInterrupt kill switch.
+    Runs when KeyboardInterrupt is triggered.
+    """
+    print('\r\nAborted by user.\n', end='')
+    exit(-1)
 
 
 # Classes
@@ -233,6 +245,10 @@ class PortScanner:
             self.open_ports.append(port)
         except error:
             pass
+        except KeyboardInterrupt:
+            if isinstance(self.progress_bar, ProgressBar):
+                self.progress_bar.stop()
+            keyboard_interrupt()
         finally:
             if isinstance(self.progress_bar, ProgressBar):
                 self.progress_bar.add_progress(1)
@@ -272,18 +288,23 @@ class PortScanner:
         self.progress_bar.start()
         self.progress_bar.cont_display()
 
-        # Start the scan
-        for thread in threads:
-            thread.start()
-            sleep(self.delay)
+        # Set up KeyboardInterrupt kill switch
+        try:
+            # Start the scan
+            for thread in threads:
+                thread.start()
+                sleep(self.delay)
 
-        # Wait while still scanning
-        while not self.progress_bar.done:
-            pass
-
-        # A little cooldown to make sure progress bar finishes
-        # before displaying results
-        sleep(5e-2)
+            # Wait while still scanning
+            while not self.progress_bar.done:
+                pass
+        except KeyboardInterrupt:
+            self.progress_bar.stop()
+            keyboard_interrupt()
+        else:
+            # A little cooldown to make sure progress bar finishes
+            # before displaying results
+            sleep(5e-2)
 
         # Determine Scan Duration
         self.scan_duration = time() - time_init
@@ -313,13 +334,20 @@ def port_scan(host: str, randomized: Optional[bool] = False,
     :return: If pretty-printed, return None, if not, return the list of
     open ports
     """
-    ps = PortScanner(randomized, delay)
-    open_ports = ps.scan(host, port_range)
+    ps = None
+    try:
+        ps = PortScanner(randomized, delay)
+        open_ports = ps.scan(host, port_range)
 
-    if pretty_print:
-        PortScanner.pprint_port(host, open_ports, ps.scan_duration)
-    else:
-        return open_ports
+        if pretty_print:
+            PortScanner.pprint_port(host, open_ports, ps.scan_duration)
+        else:
+            return open_ports
+    except KeyboardInterrupt:
+        if isinstance(ps, PortScanner):
+            if isinstance(ps.progress_bar, ProgressBar):
+                ps.progress_bar.stop()
+        keyboard_interrupt()
 
 
 if __name__ == "__main__":
